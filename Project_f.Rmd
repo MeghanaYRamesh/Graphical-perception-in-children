@@ -1,0 +1,324 @@
+---
+title: "Project"
+author: "Group 1"
+date: "2023-12-06"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Data Preprocessing
+```{r}
+child_data =read.csv("child.csv")
+#print(child_data)
+hist(child_data$MeanAngleAbsError,breaks =20)
+split_and_duplicate <- function(data) {
+  values <- eval(parse(text = data$AngleAbsError))
+  data_expanded <- data[rep(1:nrow(data), each = 20), ]
+  data_expanded$AngleAbsError <- rep(values, length.out = nrow(data_expanded))
+  data_expanded
+}
+child_data2 <- split_and_duplicate(child_data)
+```
+### Data Summary
+```{r}
+plot_qq<-function(x){
+  xx = (x-mean(x))/sd(x)
+  qqnorm(xx)
+  lines(seq(-5,5,0.01),seq(-5,5,0.01),col="red")
+}
+
+plot_qq(child_data$MeanAngleAbsError)
+Y = child_data$MeanAngleAbsError
+Z = (Y-mean(Y))/sd(Y)
+Z>3
+
+
+
+# collinearity, and we delete grade.
+cor(child_data$Age,child_data$Grade)
+```
+Interpretation:
+The response variable seems normal. There are severe collinearity between age and grade, which is naturally reasonable. Therefore, we removed 'Grade' and kept 'Age' since this variable is more universal and can be extend to a whole population.
+
+```{r,warning=FALSE}
+library(ggplot2)
+
+ggplot(child_data, aes(x = factor(Age), y = MeanAngleAbsError, group =factor(Gender), color = factor(Gender))) +
+  geom_line(stat = "summary",fun="mean", size = 1) +
+  labs(title = "Treatment Means Line Plot",
+       x = "Age",
+       y = "MeanAngleAbsError",
+       color = "Gender") +
+  theme_minimal()
+```
+Interpretation:
+From the visualization, we can observe that older subjects have lower mean angle absolute errors, and male tends to have lower errors. The interaction between 'Age' and 'Gender' is not obvious.
+
+### Model Fitting and Selection
+
+1.The first fixed-effect model we fit is the full model, that is the two-factor fixed effect model with interaction. The formula is : 
+
+$$Y\sim1+ factor(Age) + factor(Gender) + factor(Age) : factor(Gender)$$
+
+There are five levels of factor 'Age': 8, 9, 10, 11, and 12 and two levels of factor 'Gender': Male and Female. 
+```{r}
+c(sum(child_data$Age == 8 & child_data$Gender == 'Male'),
+sum(child_data$Age == 9 & child_data$Gender == 'Male'),
+sum(child_data$Age == 10 & child_data$Gender == 'Male'),
+sum(child_data$Age == 11 & child_data$Gender == 'Male'),
+sum(child_data$Age == 12 & child_data$Gender == 'Male'),
+sum(child_data$Age == 8 & child_data$Gender == 'Female'),
+sum(child_data$Age == 9 & child_data$Gender == 'Female'),
+sum(child_data$Age == 10 & child_data$Gender == 'Female'),
+sum(child_data$Age == 11 & child_data$Gender == 'Female'),
+sum(child_data$Age == 12 & child_data$Gender == 'Female'))
+```
+It is obvious that this is an unbalanced design.
+
+```{r}
+# Fit the full model
+mfixed.1 = lm(child_data$MeanAngleAbsError~factor(Age)*factor(Gender),data = child_data)
+summary(mfixed.1)
+anova(mfixed.1)
+
+# do residual plot/ histogram/ qqplot to check the assumptions
+plot(residuals(mfixed.1))
+abline(h = 0, col="red")
+qqnorm(residuals(mfixed.1), pch = 1, frame = FALSE)
+qqline(residuals(mfixed.1), col = "steelblue", lwd = 2)
+# we found that the interaction term is not significant since p-value = 0.63>0.05, 
+```
+Interpretation:
+By investigating the significance of the interaction effect, we found that the interaction term is not significant since the p-value of all interaction terms are greater than 0.05. And from the ANOVA table, we notice that the interaction term is not significant since the p-value $= 0.63487>0.05$. From the qqplot and residual plot, we found that the redisuals are not normally distributed. Therefore, we rerun the model without interaction to see if there is an improvement.
+
+
+### pairwise comparison between ages with results averaged over gender
+```{r}
+library(emmeans)
+model <- lm(MeanAngleAbsError ~ factor(Age) * factor(Gender), data = child_data)
+# Create pairwise comparisons for Age with Tukey adjustment
+comparisons <- emmeans(model, pairwise ~ factor(Age), adjust = "tukey")
+summary(comparisons)
+```
+Interpretation:
+Pairwise comparisons with Tukey adjustment test whether the differences between age groups are statistically significant. In this case, none of the pairwise differences are statistically significant (all p-values > 0.05).
+The lack of significance suggests that there's no strong evidence of a difference in MeanAngleAbsError between different age groups, after accounting for the 'Gender' factor.
+
+
+### pairwise comparison between gender with results averaged over age
+```{r}
+library(emmeans)
+model <- lm(MeanAngleAbsError ~ factor(Age) * factor(Gender), data = child_data)
+# Create pairwise comparisons for Age with Tukey adjustment
+comparisons <- emmeans(model, pairwise ~ factor(Gender), adjust = "tukey")
+summary(comparisons)
+```
+Interpretation:
+The pairwise comparison tests whether there is a statistically significant difference in MeanAngleAbsError between females and males. In this case, the p-value of 0.0268 is less than the conventional significance level of 0.05.
+Therefore, the result suggests that there is a statistically significant difference in MeanAngleAbsError between females and males. The positive estimate (3.19) indicates that, on average, females have higher MeanAngleAbsError compared to males.
+
+
+2.The second model is the additive model of two fixed-effect factors.  
+
+The model formula is :
+
+$$Y\sim1+ factor(Age) + factor(Gender)$$
+
+```{r}
+mfixed.2 = lm(child_data$MeanAngleAbsError~factor(Age)+factor(Gender),data = child_data)
+summary(mfixed.2)
+anova(mfixed.2)
+# After pooling, the factors become significant. 
+# do residual plot/ histogram/ qqplot to check the assumptions
+plot(residuals(mfixed.2))
+abline(h = 0, col="red")
+qqnorm(residuals(mfixed.2), pch = 1, frame = FALSE)
+qqline(residuals(mfixed.2), col = "steelblue", lwd = 2)
+```
+Interpretations: 
+From the output, we found that both of the Age and Gender are significant. From the qqplot, we found that the residuals are approximately Normally distributed. From the residual plot, we found that the residual has zero mean and constant variance. Therefore, we keep this as the final fixed-effect model.
+
+Moreover, the error of male subjects is lower than female subjects by 3.042, and subjects with age 11 has the lowest error among all ages.
+
+### pairwise comparison between ages with results averaged over gender
+```{r}
+library(emmeans)
+model <- lm(MeanAngleAbsError ~ factor(Age) + factor(Gender), data = child_data)
+# Create pairwise comparisons for Age with Tukey adjustment
+comparisons <- emmeans(model, pairwise ~ factor(Age), adjust = "tukey")
+summary(comparisons)
+```
+Interpretation:
+Age 8 has a significantly higher MeanAngleAbsError compared to Age 10 (p = 0.0337). No other pairwise comparisons reach statistical significance after adjusting for multiple testing using the Tukey method.
+
+### pairwise comparison between gender with results averaged over age
+```{r}
+library(emmeans)
+model <- lm(MeanAngleAbsError ~ factor(Age) + factor(Gender), data = child_data)
+# Create pairwise comparisons for Age with Tukey adjustment
+comparisons <- emmeans(model, pairwise ~ factor(Gender), adjust = "tukey")
+summary(comparisons)
+```
+Interpretation:
+the p-value of 0.0119 is less than the conventional significance level of 0.05.
+Therefore, the result suggests that there is a statistically significant difference in MeanAngleAbsError between females and males. The positive estimate (3.04) indicates that, on average, females have higher MeanAngleAbsError compared to males.
+
+3. The third model is the random effect model with interaction. 
+
+Since here the participant id variable can be viewed as samples from a large population, we can treat it as a random effect. Moreover, the cardinality of the sample space of Gender is 2 and that of age is 5, hence we can only treat it as a fixed effect. 
+
+We assume the random effect of factor is distributed as $N(0, \sigma_{age}^2)$. 
+
+We fit the models using both MLE and REML methods. 
+```{r}
+library(lme4)
+child_data2$Participant.IDF = factor(child_data2$Participant.ID)
+child_data2$AgeF = factor(child_data2$Age)
+child_data2$GenderF = factor(child_data2$Gender)
+mrandom.1 = lmer(AngleAbsError ~ factor(Age) + factor(Gender) + (1|Participant.IDF)+ (1|Participant.IDF:AgeF)+ (1|Participant.IDF:GenderF),data = child_data2, REML = TRUE)
+summary(mrandom.1)
+```
+
+From the output, we can see that the random effects do not exist.
+
+### Change the response variable to the overall mean error and redo all the analysis
+```{r}
+library(dplyr)
+child_data <- child_data %>%
+  mutate(OverallMean = rowMeans(select(., starts_with("Mean")), na.rm = TRUE))
+
+#print(child_data)
+hist(child_data$OverallMean,breaks =20)
+```
+
+### Data Summary
+
+```{r}
+plot_qq<-function(x){
+  xx = (x-mean(x))/sd(x)
+  qqnorm(xx)
+  lines(seq(-5,5,0.01),seq(-5,5,0.01),col="red")
+}
+
+plot_qq(child_data$OverallMean)
+Y = child_data$OverallMean
+Z = (Y-mean(Y))/sd(Y)
+Z>3
+
+
+
+# collinearity, and we delete grade.
+cor(child_data$Age,child_data$Grade)
+```
+
+### visualization
+
+```{r,warning=FALSE}
+library(ggplot2)
+
+ggplot(child_data, aes(x = factor(Age), y = child_data$OverallMean, group =factor(Gender), color = factor(Gender))) +
+  geom_line(stat = "summary",fun="mean", size = 1) +
+  labs(title = "Treatment Means Line Plot",
+       x = "Age",
+       y = "child_data$OverallMean",
+       color = "Gender") +
+  theme_minimal()
+```
+
+```{r}
+library(emmeans)
+model <- lm(child_data$OverallMean ~ factor(Age) * factor(Gender), data = child_data)
+# Create pairwise comparisons for Age with Tukey adjustment
+anova(model)
+comparisons <- emmeans(model, pairwise ~ factor(Age), adjust = "tukey")
+summary(comparisons)
+
+```
+
+Interpretation: Pairwise comparisons with Tukey adjustment test whether
+the differences between age groups are statistically significant. In
+this case, none of the pairwise differences are statistically
+significant (all p-values \> 0.05). The lack of significance suggests
+that there's no strong evidence of a difference in OverallMean between
+different age groups, after accounting for the 'Gender' factor.
+
+### pairwise comparison between gender with results averaged over age
+
+```{r}
+library(emmeans)
+model <- lm(child_data$OverallMean ~ factor(Age) * factor(Gender), data = child_data)
+# Create pairwise comparisons for Age with Tukey adjustment
+comparisons <- emmeans(model, pairwise ~ factor(Gender), adjust = "tukey")
+summary(comparisons)
+```
+
+Interpretation: The pairwise comparison tests whether there is a
+statistically significant difference in OverallMean between females and
+males. In this case, the p-value of 0.0161 is less than the conventional
+significance level of 0.05. Therefore, the result suggests that there is
+a statistically significant difference in OverallMean between females
+and males. The positive estimate (1.74) indicates that, on average,
+females have higher OverallMean compared to males.
+
+2.The second model is the additive model of two fixed-effect factors.
+
+The model formula is :
+
+$$Y\sim1+ factor(Age) + factor(Gender)$$
+
+```{r}
+mfixed.2 = lm(child_data$OverallMean~factor(Age)+factor(Gender),data = child_data)
+summary(mfixed.2)
+anova(mfixed.2)
+# After pooling, the factors become significant. 
+# do residual plot/ histogram/ qqplot to check the assumptions
+plot(residuals(mfixed.2))
+abline(h = 0, col="red")
+qqnorm(residuals(mfixed.2), pch = 1, frame = FALSE)
+qqline(residuals(mfixed.2), col = "steelblue", lwd = 2)
+```
+
+Interpretations: From the output, we found that both of the Age and
+Gender are significant. From the qqplot, we found that the residuals are
+approximately Normally distributed. From the residual plot, we found
+that the residual has zero mean and constant variance. Therefore, we
+keep this as the final fixed-effect model.
+
+Moreover, the error of male subjects is lower than female subjects by
+1.5743, and subjects with age 11 has the lowest error among all ages.
+
+### pairwise comparison between ages with results averaged over gender
+
+```{r}
+library(emmeans)
+model <- lm(child_data$OverallMean ~ factor(Age) + factor(Gender), data = child_data)
+# Create pairwise comparisons for Age with Tukey adjustment
+comparisons <- emmeans(model, pairwise ~ factor(Age), adjust = "tukey")
+summary(comparisons)
+```
+
+Interpretation: Age 8 has a significantly higher OverallMean compared to
+Age 11 (p = 0.0192). No other pairwise comparisons reach statistical
+significance after adjusting for multiple testing using the Tukey
+method.
+
+### pairwise comparison between gender with results averaged over age
+
+```{r}
+library(emmeans)
+model <- lm(child_data$OverallMean ~ factor(Age) + factor(Gender), data = child_data)
+# Create pairwise comparisons for Age with Tukey adjustment
+comparisons <- emmeans(model, pairwise ~ factor(Gender), adjust = "tukey")
+summary(comparisons)
+```
+
+Interpretation: the p-value of 0.0107 is less than the conventional
+significance level of 0.05. Therefore, the result suggests that there is
+a statistically significant difference in OverallMean between females
+and males. The positive estimate (1.57) indicates that, on average,
+females have higher OverallMean compared to males.
