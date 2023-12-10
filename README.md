@@ -24,7 +24,7 @@ This study offers valuable insights into age-appropriate visualization design fo
 
 
 *To run the code:* \
-Use child_data.csv from Data folder and project_f.rmd 
+Use child_data.csv from Data folder and Project_f.rmd 
 The rmd file includesincorporates result interpretation and plots to enhance comprehension.
 
 
